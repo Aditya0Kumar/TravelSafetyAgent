@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Travel Safety Advisor</title>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 font-sans flex flex-col items-center min-h-screen p-6">
+    <button onclick="toggleDarkMode()" class="fixed top-4 right-4 p-2 bg-gray-700 rounded-full">🌗</button>
+    <div class="w-full max-w-3xl bg-gray-900 p-6 rounded-xl shadow-lg flex flex-col space-y-4">
+        <h2 class="text-2xl font-bold text-center text-green-400">Travel Safety Advisor</h2>
+        
+        <div class="flex space-x-2">
+            <input type="text" id="manualLocation" placeholder="Enter city or coordinates" 
+                class="p-3 w-full rounded-lg bg-gray-800 text-white border border-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+            <button onclick="fetchAllData()" class="p-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold shadow-md transition">Fetch</button>
+        </div>
+        
+        <div class="flex space-x-2">
+            <button onclick="fetchLiveLocation()" class="flex-1 p-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-semibold shadow-md transition">Live Location</button>
+            <button onclick="callEmergency()" class="flex-1 p-3 bg-red-600 hover:bg-red-500 rounded-lg font-semibold shadow-md transition">Emergency</button>
+            <button onclick="shareLocation()" class="flex-1 p-3 bg-yellow-600 hover:bg-yellow-500 rounded-lg font-semibold shadow-md transition">Share</button>
+        </div>
+        
+        <div id="info" class="p-4 bg-gray-800 rounded-lg shadow-md text-gray-300">No data available</div>
+        <div id="map" class="w-full h-96 rounded-lg overflow-hidden shadow-md"></div>
+    </div>
+    
+    <script>
+        let map, marker, emergencyNumber = "911";
+        let userLocation = { lat: 32.3040273, lng: -64.7563086 };
+        let darkMode = false;
+
+        function initMap() {
+            map = L.map('map').setView([userLocation.lat, userLocation.lng], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            updateMarker();
+        }
+
+        function updateMarker() {
+            if (marker) map.removeLayer(marker);
+            marker = L.marker([userLocation.lat, userLocation.lng]).addTo(map)
+                .bindPopup("Selected Location").openPopup();
+        }
+
+        function toggleDarkMode() {
+            darkMode = !darkMode;
+            document.body.classList.toggle('bg-gray-950');
+            document.body.classList.toggle('bg-gray-100');
+            document.body.classList.toggle('text-gray-100');
+            document.body.classList.toggle('text-gray-900');
+        }
+
+        function fetchLiveLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(position => {
+                    userLocation.lat = position.coords.latitude;
+                    userLocation.lng = position.coords.longitude;
+                    map.setView([userLocation.lat, userLocation.lng], 14);
+                    updateMarker();
+                    fetchLocationDetails();
+                }, () => {
+                    alert("Failed to retrieve live location");
+                });
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        function fetchAllData() {
+            let input = document.getElementById('manualLocation').value;
+            if (input) {
+                axios.get(`https://nominatim.openstreetmap.org/search?format=json&q=${input}`)
+                    .then(response => {
+                        if (response.data.length > 0) {
+                            userLocation.lat = parseFloat(response.data[0].lat);
+                            userLocation.lng = parseFloat(response.data[0].lon);
+                            map.setView([userLocation.lat, userLocation.lng], 14);
+                            updateMarker();
+                            fetchLocationDetails();
+                        } else {
+                            document.getElementById('info').innerHTML = "<p class='text-red-400'>Location not found.</p>";
+                        }
+                    })
+                    .catch(() => {
+                        document.getElementById('info').innerHTML = "<p class='text-red-400'>Error fetching location.</p>";
+                    });
+            } else {
+                fetchLocationDetails();
+            }
+        }
+
+        function fetchLocationDetails() {
+            axios.get(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${userLocation.lat}&lon=${userLocation.lng}`)
+                .then(response => {
+                    document.getElementById('info').innerHTML = `<h3 class='text-lg font-semibold'>Live Location</h3>
+                        <p><strong>Latitude:</strong> ${userLocation.lat}</p>
+                        <p><strong>Longitude:</strong> ${userLocation.lng}</p>
+                        <p><strong>Address:</strong> ${response.data.display_name}</p>
+                        <p><a href='https://www.google.com/maps/search/nearby+hospitals/@${userLocation.lat},${userLocation.lng},14z' target='_blank' class='text-blue-400'><br>Find Nearby Hospitals</a></p>`;
+
+                        
+                    fetchWeather();
+                    fetchEmergencyContacts(response.data.address.country_code);
+                    fetchCrimeRate();
+                });
+        }
+
+
+        function fetchWeather() {
+            const apiKey = '71f6779186cc32448b4c412eea65b982';
+            axios.get(`https://api.openweathermap.org/data/2.5/weather?lat=${userLocation.lat}&lon=${userLocation.lng}&units=metric&appid=${apiKey}`)
+                .then(response => {
+                    document.getElementById('info').innerHTML += `<h3 class='text-lg font-semibold mt-2'>Weather Update</h3>
+                        <p>Temperature: ${response.data.main.temp}°C</p>
+                        <p>Wind Speed: ${response.data.wind.speed} m/s</p>
+                        <p>Humidity: ${response.data.main.humidity}%</p>
+                        <p>Rain: ${response.data.rain ? 'Yes' : 'No'}</p>
+                        <p>Cloud: ${response.data.clouds.all}%</p>`;
+                })
+                .catch(() => {
+                    document.getElementById('info').innerHTML += "<p class='text-red-400'>Weather data unavailable.</p>";
+                });
+        }
+
+        function fetchEmergencyContacts(countryCode) {
+            const emergencyNumbers = { "US": "911", "IN": "100", "UK": "999" };
+            emergencyNumber = emergencyNumbers[countryCode.toUpperCase()] || "911";
+            document.getElementById('info').innerHTML += `<h3 class='text-lg font-semibold mt-2'>Emergency Contacts</h3>
+                <p>Emergency: ${emergencyNumber}</p>`;
+        }
+
+        function callEmergency() {
+            window.location.href = `tel:${emergencyNumber}`;
+        }
+        
+
+        function shareLocation() {
+            navigator.clipboard.writeText(`https://www.google.com/maps?q=${userLocation.lat},${userLocation.lng}`).then(() => {
+                alert("Location link copied to clipboard!");
+            });
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
