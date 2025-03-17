@@ -130,11 +130,13 @@
         }
 
         function fetchEmergencyContacts(countryCode) {
+            if (!countryCode) countryCode = "IN";
             const emergencyNumbers = { "US": "911", "IN": "100", "UK": "999" };
             emergencyNumber = emergencyNumbers[countryCode.toUpperCase()] || "911";
             document.getElementById('info').innerHTML += `<h3 class='text-lg font-semibold mt-2'>Emergency Contacts</h3>
                 <p>Emergency: ${emergencyNumber}</p>`;
         }
+
 
         function callEmergency() {
             window.location.href = `tel:${emergencyNumber}`;
